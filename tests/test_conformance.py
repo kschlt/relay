@@ -21,6 +21,35 @@ from relay_intake.conformance import (
 from relay_intake.findings import E_REPLAY_DIVERGENT
 
 
+_TOO_DEEP_CACHE = []
+
+
+def too_deep_for_this_parser(ceiling=200000):
+    """JSON text nested past what *this* interpreter's parser accepts.
+
+    Discovered at run time, and deliberately not hardcoded: the depth at which
+    ``json.loads`` gives up is an interpreter detail, not a language one. 3000
+    levels raise ``RecursionError`` on CPython 3.11 and parse cleanly on 3.13,
+    which does not give up until around 16000 — a fixed depth chosen on one
+    version silently tests nothing on another.
+
+    Returns ``None`` if no depth under ``ceiling`` is refused, so a caller can
+    skip rather than assert something this interpreter cannot exhibit.
+    """
+    if not _TOO_DEEP_CACHE:
+        depth, found = 512, None
+        while depth <= ceiling:
+            text = "[" * depth + "]" * depth
+            try:
+                json.loads(text)
+            except RecursionError:
+                found = text.encode("ascii")
+                break
+            depth *= 2
+        _TOO_DEEP_CACHE.append(found)
+    return _TOO_DEEP_CACHE[0]
+
+
 class SingleEnvelopeTests(unittest.TestCase):
     def test_a_conforming_set_reports_conformance(self):
         report = check_set([("a", a_valid_envelope())])
@@ -177,8 +206,12 @@ class LoadDiagnosticTests(unittest.TestCase):
         self.assertIn("decoded as UTF-8", self.message(report))
 
     def test_nesting_too_deep_to_parse_says_so(self):
-        deep = ("[" * 3000 + "]" * 3000).encode("ascii")
-        self.assertIn("nested too deeply", self.message(self.report_for("d.json", deep)))
+        deep = too_deep_for_this_parser()
+        if deep is None:
+            self.skipTest("this interpreter's parser accepts any depth tried")
+        self.assertIn(
+            "nested too deeply", self.message(self.report_for("d.json", deep))
+        )
 
     def test_malformed_json_says_so(self):
         report = self.report_for("bad.json", b"{not json}")
@@ -186,9 +219,12 @@ class LoadDiagnosticTests(unittest.TestCase):
 
     def test_the_three_diagnostics_are_distinguishable(self):
         # The defect this replaces: all three collapsed to one message.
+        deep = too_deep_for_this_parser()
+        if deep is None:
+            self.skipTest("this interpreter's parser accepts any depth tried")
         messages = {
             self.message(self.report_for("a.json", b'{"a":"\xff\xfe"}')),
-            self.message(self.report_for("b.json", ("[" * 3000 + "]" * 3000).encode())),
+            self.message(self.report_for("b.json", deep)),
             self.message(self.report_for("c.json", b"{not json}")),
         }
         self.assertEqual(len(messages), 3, messages)
