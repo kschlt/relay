@@ -468,6 +468,55 @@ class DeterminismTests(ValidatorTestCase):
                 container[path[-1]] = year + container[path[-1]][4:]
             self.assertEqual(validate(envelope), [], year)
 
+    def test_a_value_too_deep_to_serialise_is_reported_not_raised(self):
+        # Parsing and serialising both recurse, to different depths, and both
+        # limits are measured against the stack already in use. So there is a
+        # band that json.loads accepts and canonical form cannot represent, and
+        # where the band falls depends on how deeply the caller was nested.
+        # Left unguarded, the same envelope raises or returns findings
+        # depending on who asked.
+        #
+        # The band is only a few levels wide, so sampling fixed depths misses
+        # it. Find its upper edge at run time instead — the deepest nesting the
+        # parser still accepts — and test downward from there.
+        def parse(nesting, frames):
+            def deeper(remaining):
+                if remaining:
+                    return deeper(remaining - 1)
+                text = ('{"envelope_version":"1","metadata":{"x":%s}}'
+                        % ("[" * nesting + "]" * nesting))
+                try:
+                    return json.loads(text)
+                except RecursionError:
+                    return None
+            return deeper(frames)
+
+        def validate_at(envelope, frames):
+            def deeper(remaining):
+                if remaining:
+                    return deeper(remaining - 1)
+                return validate(envelope)
+            return deeper(frames)
+
+        for frames in (0, 150, 400):
+            low, high = 8, 4000
+            while low < high:                       # deepest the parser accepts
+                mid = (low + high + 1) // 2
+                if parse(mid, frames) is None:
+                    high = mid - 1
+                else:
+                    low = mid
+            self.assertGreater(low, 8, "parser rejected everything")
+            for nesting in range(max(8, low - 12), low + 1):
+                envelope = parse(nesting, frames)
+                if envelope is None:
+                    continue
+                with self.subTest(frames=frames, nesting=nesting):
+                    findings = validate_at(envelope, frames)
+                    self.assertNotEqual(
+                        findings, [], "validated clean at depth %d" % nesting
+                    )
+
     def test_validation_does_not_mutate_its_input(self):
         envelope = a_valid_envelope()
         envelope["kind"] = "transcript"
@@ -475,13 +524,84 @@ class DeterminismTests(ValidatorTestCase):
         validate(envelope)
         self.assertEqual(envelope, before)
 
-    def test_the_validator_imports_no_ambient_state(self):
-        import relay_intake.validator as module
+    #: Modules that would give validation a clock, a network, a filesystem, or
+    #: a source of randomness. Checked by name against the parsed import
+    #: statements, not by searching the text: a substring scan is evaded by any
+    #: spelling it does not happen to list, and this claim is made flatly in
+    #: CLAUDE.md, so it has to hold against the spellings nobody thought of.
+    AMBIENT_MODULES = frozenset({
+        "time", "datetime", "calendar", "random", "secrets", "uuid",
+        "os", "os.path", "pathlib", "shutil", "glob", "tempfile", "io",
+        "socket", "ssl", "http", "urllib", "urllib.request", "requests",
+        "subprocess", "platform", "locale", "getpass", "sys",
+    })
+
+    #: Builtins that reach outside the argument, whatever is imported.
+    AMBIENT_CALLS = frozenset({"open", "input", "eval", "exec", "__import__",
+                               "compile", "globals", "vars"})
+
+    def ambient_use(self, module):
+        """Return every ambient import or call reachable in ``module``."""
+        import ast
+
         with open(module.__file__, "r", encoding="utf-8") as handle:
-            source = handle.read()
-        for forbidden in ("import time", "import random", "import datetime",
-                          "import os", "datetime.now", "time.time"):
-            self.assertNotIn(forbidden, source, forbidden)
+            tree = ast.parse(handle.read())
+        found = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root = alias.name.split(".")[0]
+                    if alias.name in self.AMBIENT_MODULES or root in self.AMBIENT_MODULES:
+                        found.append("import %s" % alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                name = node.module or ""
+                if name in self.AMBIENT_MODULES or name.split(".")[0] in self.AMBIENT_MODULES:
+                    found.append("from %s import ..." % name)
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                if node.func.id in self.AMBIENT_CALLS:
+                    found.append("%s(...)" % node.func.id)
+        return found
+
+    def test_validation_reaches_no_ambient_state(self):
+        # Both modules on the validation path, not just the one: a clock
+        # imported next door is just as fatal to a replayed envelope.
+        import relay_intake.canonical as canonical
+        import relay_intake.validator as validator
+
+        for module in (validator, canonical):
+            with self.subTest(module=module.__name__):
+                self.assertEqual(
+                    self.ambient_use(module), [],
+                    "%s reaches outside the envelope" % module.__name__,
+                )
+
+    def test_the_ambient_guard_detects_what_it_claims_to(self):
+        # A guard nobody has seen fail is a guard nobody knows works. Each of
+        # these evaded the substring scan this replaced.
+        import ast
+
+        cases = {
+            "unlisted import spelling": "import datetime as dt\n",
+            "a network module": "import socket\n",
+            "a filesystem call": "def f():\n    return open('x')\n",
+            "a from-import": "from time import monotonic\n",
+        }
+        for label, source in cases.items():
+            with self.subTest(case=label):
+                tree = ast.parse(source)
+                found = []
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            if alias.name.split(".")[0] in self.AMBIENT_MODULES:
+                                found.append(alias.name)
+                    elif isinstance(node, ast.ImportFrom):
+                        if (node.module or "").split(".")[0] in self.AMBIENT_MODULES:
+                            found.append(node.module)
+                    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                        if node.func.id in self.AMBIENT_CALLS:
+                            found.append(node.func.id)
+                self.assertNotEqual(found, [], "%s slipped past the guard" % label)
 
 
 class FindingTests(unittest.TestCase):

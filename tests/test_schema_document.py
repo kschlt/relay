@@ -22,7 +22,16 @@ from tests.support import (
     load_manifest,
 )
 
-from relay_intake.validator import ENVELOPE_VERSION, validate
+from relay_intake.validator import (
+    ENVELOPE_VERSION,
+    _CONTENT_MEMBERS,
+    _DIGEST_MEMBERS,
+    _ENVELOPE_MEMBERS,
+    _PAYLOAD_MEMBERS,
+    _PROVENANCE_MEMBERS,
+    _SOURCE_MEMBERS,
+    validate,
+)
 
 try:
     import jsonschema
@@ -70,15 +79,6 @@ class SchemaDocumentTests(unittest.TestCase):
             ENVELOPE_VERSION,
         )
 
-    def test_the_envelope_and_every_nested_object_are_closed(self):
-        # An open object would let a vendor field ride along unnoticed, which
-        # is precisely the leak the boundary exists to prevent.
-        self.assertFalse(self.schema["additionalProperties"])
-        for name in ("source", "provenance", "content", "payload"):
-            self.assertFalse(
-                self.schema["properties"][name]["additionalProperties"], name
-            )
-
     def test_metadata_is_the_one_open_object_and_is_still_bounded(self):
         metadata = self.schema["properties"]["metadata"]
         self.assertIn("additionalProperties", metadata)
@@ -94,12 +94,48 @@ class SchemaDocumentTests(unittest.TestCase):
                          "docs/intake-envelope.md"):
             self.assertIn(expected, description)
 
-    def test_every_required_member_of_the_validator_is_required_here(self):
-        self.assertEqual(
-            sorted(self.schema["required"]),
-            sorted(["envelope_version", "intake_id", "kind", "captured_at",
-                    "source", "provenance", "content", "payload"]),
-        )
+    #: Every closed object in the contract, paired with the validator's own
+    #: member table for it. Read from the validator rather than restated here:
+    #: a literal copy of the required list cannot detect the two artifacts
+    #: drifting apart, which is the only thing this check exists to do.
+    OBJECTS = (
+        ("envelope", (), _ENVELOPE_MEMBERS),
+        ("source", ("source",), _SOURCE_MEMBERS),
+        ("provenance", ("provenance",), _PROVENANCE_MEMBERS),
+        ("content", ("content",), _CONTENT_MEMBERS),
+        ("content.digest", ("content", "digest"), _DIGEST_MEMBERS),
+        ("payload", ("payload",), _PAYLOAD_MEMBERS),
+    )
+
+    def schema_object(self, path):
+        node = self.schema
+        for segment in path:
+            node = node["properties"][segment]
+        return node
+
+    def test_each_object_requires_exactly_what_the_validator_requires(self):
+        # Flipping a member's requiredness in the validator must fail here.
+        # While this was a hardcoded list it did not: the validator could stop
+        # requiring `payload` with the whole suite still green, and then accept
+        # an envelope the published schema rejects — the one invariant the
+        # suite advertises, defeated from the side it was not watching.
+        for label, path, members in self.OBJECTS:
+            with self.subTest(object=label):
+                self.assertEqual(
+                    sorted(self.schema_object(path).get("required", [])),
+                    sorted(name for name, required in members.items() if required),
+                )
+
+    def test_each_object_admits_exactly_the_members_the_validator_admits(self):
+        # The other half of the same drift: a member added to one artifact and
+        # not the other.
+        for label, path, members in self.OBJECTS:
+            with self.subTest(object=label):
+                node = self.schema_object(path)
+                self.assertEqual(node.get("additionalProperties"), False, label)
+                self.assertEqual(
+                    sorted(node["properties"]), sorted(members)
+                )
 
 
 @unittest.skipIf(jsonschema is None, "jsonschema is not installed")

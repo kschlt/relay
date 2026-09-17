@@ -72,15 +72,26 @@ def canonical_size(value):
     """Canonical byte length of ``value``, or ``None`` if it has none.
 
     Some JSON values have no canonical form at all: ``json.loads`` accepts
-    ``NaN`` and ``Infinity`` by default, and a lone surrogate survives parsing
-    but cannot be encoded as UTF-8. Both are already violations under other
-    rules, so validation reports them there — but a size check must not be the
-    thing that discovers them, because raising would abandon a whole conformance
-    run over one bad envelope.
+    ``NaN`` and ``Infinity`` by default, a lone surrogate survives parsing but
+    cannot be encoded as UTF-8, and a deeply nested value can parse and still
+    exhaust the stack on the way back out. Each is already a violation under
+    another rule, so validation reports it there — but a size check must not be
+    the thing that discovers it, because raising would abandon a whole
+    conformance run over one bad envelope.
     """
     try:
         return len(canonical_bytes(value))
     except (ValueError, UnicodeEncodeError):
+        return None
+    except RecursionError:
+        # Serialising recurses, and so does parsing — but not to the same
+        # depth, and neither limit is absolute: both are measured against the
+        # stack already in use. So there is a narrow band of nesting that
+        # json.loads accepts and this then cannot serialise, and where the band
+        # falls depends on how deeply the caller was nested when it called.
+        # Without this, the same envelope raises or returns findings depending
+        # on who asked, which breaks the determinism the contract promises
+        # before it ever reaches the never-raises guarantee.
         return None
 
 
