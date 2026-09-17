@@ -1,0 +1,29 @@
+# aos:begin id=host-ignore rev=2 managed by aos touchpoint writer - do not edit by hand
+# The instance — its own nested state repo (D11), always host-ignored. Deliberately
+# NO trailing slash: a trailing-slash pattern matches only real directories, never a
+# symlink, and an ephemeral host may mount .aos as a symlink to a sibling clone.
+.aos
+# aos:end id=host-ignore
+
+# Host wiring for the maintainer's local workflow tooling: a symlink into the
+# host-ignored .aos/ mount above. Tracking it would hand every clone a dangling
+# symlink, so it stays out of the public tree.
+.claude
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+*.swp
