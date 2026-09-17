@@ -15,7 +15,12 @@ import json
 import os
 import unittest
 
-from tests.support import SCHEMA_PATH, load_fixture, load_manifest
+from tests.support import (
+    SCHEMA_PATH,
+    a_valid_envelope,
+    load_fixture,
+    load_manifest,
+)
 
 from relay_intake.validator import ENVELOPE_VERSION, validate
 
@@ -23,6 +28,18 @@ try:
     import jsonschema
 except ImportError:  # pragma: no cover - exercised only where the lib is absent
     jsonschema = None
+
+
+def _shift_year(envelope, year):
+    """Move every timestamp in ``envelope`` to ``year``, keeping the order."""
+    for path in (("occurred_at",), ("captured_at",),
+                 ("provenance", "acquired_at"), ("payload", "preserved_at"),
+                 ("provenance", "emitted_at")):
+        container = envelope
+        for segment in path[:-1]:
+            container = container[segment]
+        if path[-1] in container:
+            container[path[-1]] = year + container[path[-1]][4:]
 
 
 def load_schema():
@@ -111,18 +128,78 @@ class SchemaAgreementTests(unittest.TestCase):
                     [(list(e.absolute_path), e.message) for e in errors],
                 )
 
+    #: Deterministic mutations of a conforming envelope, chosen to land on both
+    #: sides of the two artifacts' boundary: values the schema constrains, and
+    #: values only the reference validator can judge. Fixed rather than random
+    #: so a failure is reproducible from the test name alone.
+    MUTATIONS = (
+        ("occurred_at absent", lambda e: e.pop("occurred_at", None)),
+        ("metadata absent", lambda e: e.pop("metadata", None)),
+        ("metadata empty", lambda e: e.update(metadata={})),
+        ("undeclared metadata name", lambda e: e["metadata"].update(tags=["a"])),
+        ("boolean metadata", lambda e: e["metadata"].update(is_recurring=True)),
+        ("integer metadata", lambda e: e["metadata"].update(word_count=0)),
+        ("zero byte_length", lambda e: e["content"].update(byte_length=0)),
+        ("sha-512 digest",
+         lambda e: e["content"].update(digest={"algorithm": "sha-512",
+                                               "value": "a" * 128})),
+        ("experimental kind", lambda e: e.update(kind="x-voice-memo")),
+        ("core kind note", lambda e: e.update(kind="note")),
+        ("fractional seconds",
+         lambda e: e.update(captured_at="2026-01-05T15:02:11.250Z")),
+        ("nanosecond precision",
+         lambda e: e.update(captured_at="2026-01-05T15:02:11.123456789Z")),
+        ("equal timestamps",
+         lambda e: e["payload"].update(preserved_at=e["provenance"]["emitted_at"])),
+        ("https payload uri",
+         lambda e: e["payload"].update(uri="https://payloads.example/a.txt")),
+        ("opaque scheme payload uri",
+         lambda e: e["payload"].update(uri="s3://example-bucket/a.txt")),
+        ("run_id present", lambda e: e["provenance"].update(run_id="run-0001")),
+        ("external_revision present",
+         lambda e: e["source"].update(external_revision="2")),
+        ("prerelease adapter version",
+         lambda e: e["provenance"].update(adapter_version="1.0.0-rc.1")),
+        ("long but legal title",
+         lambda e: e["metadata"].update(title="t" * 512)),
+        ("far past", lambda e: _shift_year(e, "1904")),
+        ("far future", lambda e: _shift_year(e, "2999")),
+    )
+
     def test_the_schema_is_never_stricter_than_the_reference_validator(self):
-        # The direction that matters. If the schema rejected something the
-        # contract accepts, the contract would be saying two different things.
-        for entry in load_manifest()["invalid"]:
-            with self.subTest(fixture=entry["file"]):
-                document = load_fixture(entry["file"])
-                if not self.validator.is_valid(document):
-                    self.assertNotEqual(
-                        validate(document), [],
-                        "the schema rejects %s but the reference validator "
-                        "accepts it" % entry["file"],
+        # The direction that matters: if the schema rejected something the
+        # contract accepts, the contract would say two different things to two
+        # readers. Driven by mutations rather than by the invalid corpus —
+        # every invalid fixture is rejected by the validator by construction,
+        # so asserting it there can never fail and proves nothing.
+        for label, mutate in self.MUTATIONS:
+            with self.subTest(mutation=label):
+                envelope = a_valid_envelope()
+                mutate(envelope)
+                accepted_by_validator = not validate(envelope)
+                schema_errors = list(self.validator.iter_errors(envelope))
+                if accepted_by_validator:
+                    self.assertEqual(
+                        schema_errors, [],
+                        "the reference validator accepts %r but the schema "
+                        "rejects it: %s"
+                        % (label, [e.message for e in schema_errors]),
                     )
+
+    def test_the_mutation_sweep_actually_reaches_conforming_envelopes(self):
+        # A sweep whose every mutation happened to be invalid would pass the
+        # test above vacuously, which is the failure it exists to replace.
+        conforming = 0
+        for _label, mutate in self.MUTATIONS:
+            envelope = a_valid_envelope()
+            mutate(envelope)
+            if not validate(envelope):
+                conforming += 1
+        self.assertEqual(
+            conforming, len(self.MUTATIONS),
+            "every mutation is meant to stay conforming; %d did not"
+            % (len(self.MUTATIONS) - conforming),
+        )
 
     def test_neither_artifact_accepts_an_invalid_fixture(self):
         for entry in load_manifest()["invalid"]:

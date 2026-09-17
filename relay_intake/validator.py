@@ -374,7 +374,12 @@ def _validate_content(report, content):
         description="must be lowercase hexadecimal",
     ):
         return
-    expected = ALGORITHM_HEX_LENGTHS.get(algorithm)
+    # Only look the algorithm up when it is a string. A JSON array or object
+    # here is unhashable, and a dict lookup on one raises TypeError — which
+    # would abandon the run over an envelope that already has a finding.
+    expected = (
+        ALGORITHM_HEX_LENGTHS.get(algorithm) if isinstance(algorithm, str) else None
+    )
     if expected is not None and len(value) != expected:
         report.add(
             E_DIGEST_LENGTH, pointer("content", "digest", "value"),
@@ -403,9 +408,25 @@ def _validate_payload(report, payload):
         )
 
 
+#: Python types a metadata value may be built from. A value outside these is
+#: not a metadata value at all, whatever name it appears under.
+_METADATA_VALUE_TYPES = (str, bool, int, float, list)
+
+
 def _validate_metadata_value(report, key, value):
     at = pointer("metadata", key)
     declared = _METADATA_VOCABULARY.get(key)
+    if not isinstance(value, _METADATA_VALUE_TYPES):
+        # Reported before the declared-name checks so that the same violation
+        # carries the same code either way. Otherwise structure smuggled in
+        # under a declared name would report E_TYPE and slip past a consumer
+        # branching on E_METADATA_VALUE — which is exactly the consumer that
+        # is watching for a payload being carried in pieces.
+        report.add(
+            E_METADATA_VALUE, at,
+            "must be a string, an integer, a boolean, or an array of strings",
+        )
+        return
     if declared == "integer":
         if not _check_non_negative_integer(report, value, ("metadata", key)):
             return

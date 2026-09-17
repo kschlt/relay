@@ -37,6 +37,13 @@
   ],
   "invalid": [
     {
+      "file": "invalid/digest-algorithm-not-a-string.json",
+      "codes": [
+        "E_TYPE"
+      ],
+      "note": "A JSON array where the digest algorithm belongs. An array is unhashable, so a bare lookup against the admitted algorithms would raise rather than report."
+    },
+    {
       "file": "invalid/digest-length-mismatch.json",
       "codes": [
         "E_DIGEST_LENGTH"
@@ -70,6 +77,13 @@
         "E_METADATA_VALUE"
       ],
       "note": "A nested object in metadata. Structure there is how a payload gets smuggled in a piece at a time."
+    },
+    {
+      "file": "invalid/metadata-nested-under-declared-name.json",
+      "codes": [
+        "E_METADATA_VALUE"
+      ],
+      "note": "Structure smuggled in under a name the vocabulary declares. It must report the same code as structure under any other name, or a consumer watching for a payload carried in pieces misses it."
     },
     {
       "file": "invalid/metadata-too-large.json",

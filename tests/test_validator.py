@@ -394,11 +394,7 @@ class UncanonicalValueTests(ValidatorTestCase):
             self.assertIn(E_NUMBER_NOT_INTEGER, self.codes(envelope), literal)
 
     def test_a_non_finite_number_in_a_declared_member_is_a_finding(self):
-        envelope = json.loads(
-            json.dumps(a_valid_envelope()).replace('"byte_length": 2048', '"byte_length": NaN')
-            if '"byte_length": 2048' in json.dumps(a_valid_envelope())
-            else json.dumps(a_valid_envelope())
-        )
+        envelope = a_valid_envelope()
         envelope["content"]["byte_length"] = float("nan")
         self.assertIn(E_NUMBER_NOT_INTEGER, self.codes(envelope))
 

@@ -363,7 +363,7 @@ Codes are part of the contract — a consumer may branch on one.
 | `E_DIGEST_LENGTH` | A digest's length does not match its named algorithm. |
 | `E_PAYLOAD_URI_EMBEDS_CONTENT` | The payload reference inlines the payload. |
 | `E_METADATA_KEY` | A metadata name is not source-neutral `snake_case`. |
-| `E_METADATA_VALUE` | A metadata value is of a type metadata may not hold. |
+| `E_METADATA_VALUE` | A metadata value is of a type metadata may not hold. Reported for any such value, whether or not its name is in the vocabulary. |
 | `E_METADATA_SIZE` | Metadata exceeds its ceiling. |
 | `E_ENVELOPE_SIZE` | The envelope exceeds its ceiling. |
 | `E_REPLAY_DIVERGENT` | Two envelopes for the same item and revision disagree. |

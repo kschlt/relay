@@ -188,7 +188,14 @@ def load_json_lines(stream, origin="<stdin>"):
         except StopIteration:
             return
         except UnicodeDecodeError as error:
-            yield where, "<undecodable input: %s>" % (error,)
+            # An arbitrary text stream cannot be safely resumed past a decode
+            # error, so the read stops here. It says so rather than ending
+            # quietly: a silently truncated set is a conformance check that
+            # passed over envelopes it never saw. Binary streams — what
+            # load_path and the CLI use — skip the bad line and carry on.
+            yield where, (
+                "<undecodable input, remainder of stream not read: %s>" % (error,)
+            )
             return
         if isinstance(line, bytes):
             try:
@@ -201,6 +208,11 @@ def load_json_lines(stream, origin="<stdin>"):
             continue
         try:
             yield where, json.loads(line)
+        except RecursionError as error:
+            # Deeply nested JSON exhausts the parser's stack. RecursionError is
+            # not a ValueError, so it needs naming explicitly or it escapes the
+            # harness as a traceback.
+            yield where, "<JSON nested too deeply: %s>" % (error,)
         except ValueError as error:
             yield where, "<unparseable JSON: %s>" % (error,)
 
@@ -227,6 +239,9 @@ def load_path(path):
         document = json.loads(raw.decode("utf-8"))
     except UnicodeDecodeError as error:
         yield path, "<undecodable input: %s>" % (error,)
+        return
+    except RecursionError as error:
+        yield path, "<JSON nested too deeply: %s>" % (error,)
         return
     except ValueError as error:
         yield path, "<unparseable JSON: %s>" % (error,)
