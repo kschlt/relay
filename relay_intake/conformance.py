@@ -28,8 +28,33 @@ import os
 import sys
 
 from relay_intake.canonical import canonical_text, item_projection
-from relay_intake.findings import E_REPLAY_DIVERGENT, Finding, sort_findings
+from relay_intake.findings import (
+    E_NOT_OBJECT,
+    E_REPLAY_DIVERGENT,
+    Finding,
+    sort_findings,
+)
 from relay_intake.validator import validate
+
+
+class LoadError(object):
+    """Input that never became a JSON value, carrying why.
+
+    Without this a file that could not be decoded, one nested too deeply to
+    parse, and one that is simply malformed all arrive at the validator as a
+    string and report the identical "an envelope must be a JSON object". That
+    is true and useless: for a non-UTF-8 file that *is* a JSON object it points
+    at the wrong problem entirely, and an adapter author reads the message, not
+    the code.
+    """
+
+    __slots__ = ("reason",)
+
+    def __init__(self, reason):
+        self.reason = reason
+
+    def __repr__(self):
+        return "LoadError(%r)" % (self.reason,)
 
 
 class EnvelopeResult(object):
@@ -140,7 +165,13 @@ def check_set(pairs, allow_empty=False):
     noise on top of the real finding.
     """
     results = [
-        EnvelopeResult(origin, envelope, validate(envelope))
+        EnvelopeResult(
+            origin,
+            envelope,
+            [Finding(E_NOT_OBJECT, "", envelope.reason)]
+            if isinstance(envelope, LoadError)
+            else validate(envelope),
+        )
         for origin, envelope in pairs
     ]
     # Group conforming envelopes by the pair that must pin the item's facts.
@@ -193,15 +224,16 @@ def load_json_lines(stream, origin="<stdin>"):
             # quietly: a silently truncated set is a conformance check that
             # passed over envelopes it never saw. Binary streams — what
             # load_path and the CLI use — skip the bad line and carry on.
-            yield where, (
-                "<undecodable input, remainder of stream not read: %s>" % (error,)
+            yield where, LoadError(
+                "input could not be decoded as UTF-8, and the remainder of "
+                "the stream was not read: %s" % (error,)
             )
             return
         if isinstance(line, bytes):
             try:
                 line = line.decode("utf-8")
             except UnicodeDecodeError as error:
-                yield where, "<undecodable input: %s>" % (error,)
+                yield where, LoadError("input could not be decoded as UTF-8: %s" % (error,))
                 continue
         line = line.strip()
         if not line:
@@ -212,9 +244,9 @@ def load_json_lines(stream, origin="<stdin>"):
             # Deeply nested JSON exhausts the parser's stack. RecursionError is
             # not a ValueError, so it needs naming explicitly or it escapes the
             # harness as a traceback.
-            yield where, "<JSON nested too deeply: %s>" % (error,)
+            yield where, LoadError("JSON is nested too deeply to parse: %s" % (error,))
         except ValueError as error:
-            yield where, "<unparseable JSON: %s>" % (error,)
+            yield where, LoadError("input is not valid JSON: %s" % (error,))
 
 
 def load_path(path):
@@ -238,13 +270,13 @@ def load_path(path):
     try:
         document = json.loads(raw.decode("utf-8"))
     except UnicodeDecodeError as error:
-        yield path, "<undecodable input: %s>" % (error,)
+        yield path, LoadError("input could not be decoded as UTF-8: %s" % (error,))
         return
     except RecursionError as error:
-        yield path, "<JSON nested too deeply: %s>" % (error,)
+        yield path, LoadError("JSON is nested too deeply to parse: %s" % (error,))
         return
     except ValueError as error:
-        yield path, "<unparseable JSON: %s>" % (error,)
+        yield path, LoadError("input is not valid JSON: %s" % (error,))
         return
     # A JSON file may hold one envelope or an array of them; both are common
     # ways for an adapter to dump a run, and neither is worth refusing.

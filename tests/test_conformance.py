@@ -12,6 +12,7 @@ import unittest
 from tests.support import REPO_ROOT, a_valid_envelope, load_fixture
 
 from relay_intake.conformance import (
+    LoadError,
     check_set,
     load_json_lines,
     load_path,
@@ -148,6 +149,62 @@ class UndecodableInputTests(unittest.TestCase):
             report = check_set(list(load_path(directory)))
         self.assertEqual(report.counts["envelopes"], 2)
         self.assertEqual(report.counts["conforming"], 1)
+
+
+class LoadDiagnosticTests(unittest.TestCase):
+    """Why a file could not be read must survive into the report.
+
+    All three load failures are "not a JSON object" and reporting only that is
+    true and useless — for a non-UTF-8 file that *is* a JSON object it points
+    at the wrong problem. An adapter author reads the message, not the code.
+    """
+
+    def report_for(self, name, data):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, name)
+            with open(path, "wb") as handle:
+                handle.write(data)
+            return check_set(list(load_path(path)))
+
+    def message(self, report):
+        self.assertEqual(report.counts["rejected"], 1)
+        findings = report.results[0].findings
+        self.assertEqual(len(findings), 1)
+        return findings[0].message
+
+    def test_undecodable_input_says_so(self):
+        report = self.report_for("bad.json", b'{"a":"\xff\xfe"}')
+        self.assertIn("decoded as UTF-8", self.message(report))
+
+    def test_nesting_too_deep_to_parse_says_so(self):
+        deep = ("[" * 3000 + "]" * 3000).encode("ascii")
+        self.assertIn("nested too deeply", self.message(self.report_for("d.json", deep)))
+
+    def test_malformed_json_says_so(self):
+        report = self.report_for("bad.json", b"{not json}")
+        self.assertIn("not valid JSON", self.message(report))
+
+    def test_the_three_diagnostics_are_distinguishable(self):
+        # The defect this replaces: all three collapsed to one message.
+        messages = {
+            self.message(self.report_for("a.json", b'{"a":"\xff\xfe"}')),
+            self.message(self.report_for("b.json", ("[" * 3000 + "]" * 3000).encode())),
+            self.message(self.report_for("c.json", b"{not json}")),
+        }
+        self.assertEqual(len(messages), 3, messages)
+
+    def test_a_load_failure_reaches_the_json_report(self):
+        report = self.report_for("bad.json", b"{not json}")
+        entry = report.to_dict()["envelopes"][0]
+        self.assertIn("not valid JSON", entry["findings"][0]["message"])
+
+    def test_a_load_failure_is_not_mistaken_for_an_envelope(self):
+        # A LoadError must never reach validate(), which would report the
+        # generic non-object message and lose the reason.
+        self.assertIsInstance(LoadError("why"), LoadError)
+        report = check_set([("x", LoadError("a specific reason"))])
+        self.assertFalse(report.conforms)
+        self.assertIn("a specific reason", report.results[0].findings[0].message)
 
 
 class LoaderTests(unittest.TestCase):

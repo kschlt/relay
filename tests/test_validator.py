@@ -540,14 +540,29 @@ class DeterminismTests(ValidatorTestCase):
     AMBIENT_CALLS = frozenset({"open", "input", "eval", "exec", "__import__",
                                "compile", "globals", "vars"})
 
-    def ambient_use(self, module):
-        """Return every ambient import or call reachable in ``module``."""
+    #: Every module that executes during validation. The validator imports
+    #: both of the others, so a clock next door is just as fatal to a replayed
+    #: envelope as one here.
+    VALIDATION_PATH = (
+        "relay_intake.validator",
+        "relay_intake.canonical",
+        "relay_intake.findings",
+    )
+
+    def ambient_use(self, source):
+        """Return every ambient import or call in ``source``.
+
+        Takes source text rather than a module so that the guard itself is
+        directly testable: the self-test below calls *this* function on each
+        known evasion. An earlier version re-implemented the walk inline, which
+        meant the self-test passed while the guard was blind — reducing this to
+        `return []` left the whole suite green with a real clock imported into
+        the validator.
+        """
         import ast
 
-        with open(module.__file__, "r", encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
         found = []
-        for node in ast.walk(tree):
+        for node in ast.walk(ast.parse(source)):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     root = alias.name.split(".")[0]
@@ -562,46 +577,45 @@ class DeterminismTests(ValidatorTestCase):
                     found.append("%s(...)" % node.func.id)
         return found
 
-    def test_validation_reaches_no_ambient_state(self):
-        # Both modules on the validation path, not just the one: a clock
-        # imported next door is just as fatal to a replayed envelope.
-        import relay_intake.canonical as canonical
-        import relay_intake.validator as validator
+    def module_source(self, dotted_name):
+        import importlib
 
-        for module in (validator, canonical):
-            with self.subTest(module=module.__name__):
+        module = importlib.import_module(dotted_name)
+        with open(module.__file__, "r", encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_validation_reaches_no_ambient_state(self):
+        for name in self.VALIDATION_PATH:
+            with self.subTest(module=name):
                 self.assertEqual(
-                    self.ambient_use(module), [],
-                    "%s reaches outside the envelope" % module.__name__,
+                    self.ambient_use(self.module_source(name)), [],
+                    "%s reaches outside the envelope" % name,
                 )
 
     def test_the_ambient_guard_detects_what_it_claims_to(self):
-        # A guard nobody has seen fail is a guard nobody knows works. Each of
-        # these evaded the substring scan this replaced.
-        import ast
-
+        # Calls the guard itself, so blinding the guard fails this too. A guard
+        # nobody has seen fail is a guard nobody knows works.
         cases = {
             "unlisted import spelling": "import datetime as dt\n",
             "a network module": "import socket\n",
             "a filesystem call": "def f():\n    return open('x')\n",
             "a from-import": "from time import monotonic\n",
+            "a nested clock read": "def f():\n    import time\n    return time.time()\n",
         }
         for label, source in cases.items():
             with self.subTest(case=label):
-                tree = ast.parse(source)
-                found = []
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Import):
-                        for alias in node.names:
-                            if alias.name.split(".")[0] in self.AMBIENT_MODULES:
-                                found.append(alias.name)
-                    elif isinstance(node, ast.ImportFrom):
-                        if (node.module or "").split(".")[0] in self.AMBIENT_MODULES:
-                            found.append(node.module)
-                    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                        if node.func.id in self.AMBIENT_CALLS:
-                            found.append(node.func.id)
-                self.assertNotEqual(found, [], "%s slipped past the guard" % label)
+                self.assertNotEqual(
+                    self.ambient_use(source), [],
+                    "%s slipped past the guard" % label,
+                )
+
+    def test_the_guard_does_not_fire_on_what_validation_legitimately_uses(self):
+        # A guard that flagged `re` or `hashlib` would be turned off by the
+        # first person it inconvenienced.
+        for source in ("import re\n", "import json\n", "import hashlib\n",
+                       "from relay_intake.canonical import canonical_size\n"):
+            with self.subTest(source=source.strip()):
+                self.assertEqual(self.ambient_use(source), [])
 
 
 class FindingTests(unittest.TestCase):
