@@ -1,6 +1,7 @@
 """Rule-by-rule validation, and the three properties that make it deterministic."""
 
 import copy
+import json
 import unittest
 
 from tests.support import a_valid_envelope
@@ -374,6 +375,51 @@ class SizeCeilingTests(ValidatorTestCase):
         self.assertLess(
             len(canonical_bytes(envelope["metadata"])), MAX_METADATA_BYTES // 2
         )
+
+
+class UncanonicalValueTests(ValidatorTestCase):
+    """Values that survive JSON parsing but have no canonical form.
+
+    `json.loads` accepts NaN and Infinity by default, and a lone surrogate
+    parses fine and then cannot be encoded as UTF-8. Both must come back as
+    findings: a validator that raised would abandon a whole conformance run
+    over one bad envelope, which is the opposite of what the run is for.
+    """
+
+    def test_a_non_finite_number_is_a_finding_not_an_exception(self):
+        for literal in ("NaN", "Infinity", "-Infinity"):
+            envelope = json.loads(
+                '{"envelope_version":"1","metadata":{"x":%s}}' % literal
+            )
+            self.assertIn(E_NUMBER_NOT_INTEGER, self.codes(envelope), literal)
+
+    def test_a_non_finite_number_in_a_declared_member_is_a_finding(self):
+        envelope = json.loads(
+            json.dumps(a_valid_envelope()).replace('"byte_length": 2048', '"byte_length": NaN')
+            if '"byte_length": 2048' in json.dumps(a_valid_envelope())
+            else json.dumps(a_valid_envelope())
+        )
+        envelope["content"]["byte_length"] = float("nan")
+        self.assertIn(E_NUMBER_NOT_INTEGER, self.codes(envelope))
+
+    def test_an_unpaired_surrogate_is_a_finding_not_an_exception(self):
+        envelope = a_valid_envelope()
+        envelope["metadata"]["title"] = "\ud800"
+        self.assertFindingAt(envelope, E_FORMAT, pointer("metadata", "title"))
+
+    def test_an_unpaired_surrogate_anywhere_still_validates(self):
+        # The size rule abstains rather than raising; the member rules report.
+        envelope = a_valid_envelope()
+        envelope["source"]["external_id"] = "\udfff"
+        findings = validate(envelope)
+        self.assertNotEqual(findings, [])
+
+    def test_the_separator_guard_does_not_crash_identity_derivation(self):
+        # derive_intake_id refuses a component containing U+001F. The validator
+        # must not hand it one.
+        envelope = a_valid_envelope()
+        envelope["source"]["system"] = "example\x1fcapture"
+        self.assertNotEqual(validate(envelope), [])
 
 
 class DeterminismTests(ValidatorTestCase):

@@ -89,6 +89,67 @@ class ReplayTests(unittest.TestCase):
         self.assertTrue(report.conforms, [str(f) for f in report.cross_findings])
 
 
+class EmptySetTests(unittest.TestCase):
+    """A check that examined nothing cannot report conformance."""
+
+    def test_an_empty_set_does_not_conform(self):
+        # `all([])` is True, so without an explicit rule a gate pointed at the
+        # wrong directory would go green having checked nothing.
+        report = check_set([])
+        self.assertFalse(report.conforms)
+        self.assertTrue(report.is_empty)
+
+    def test_an_empty_set_conforms_when_that_is_declared_expected(self):
+        # An incremental adapter run that found nothing new is legitimate.
+        report = check_set([], allow_empty=True)
+        self.assertTrue(report.conforms)
+
+    def test_the_empty_report_says_what_to_do_about_it(self):
+        self.assertIn("--allow-empty", check_set([]).render())
+        self.assertIn("no envelopes found", check_set([]).render())
+
+    def test_the_json_report_marks_emptiness(self):
+        self.assertTrue(check_set([]).to_dict()["empty"])
+        self.assertFalse(check_set([("a", a_valid_envelope())]).to_dict()["empty"])
+
+
+class UndecodableInputTests(unittest.TestCase):
+    """Bad bytes are a finding, not a traceback out of the harness."""
+
+    def write(self, directory, name, data):
+        path = os.path.join(directory, name)
+        with open(path, "wb") as handle:
+            handle.write(data)
+        return path
+
+    def test_a_non_utf8_byte_in_a_jsonl_stream_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write(
+                directory, "run.jsonl", b'{"a":1}\n\xff\xfe bad\n{"b":2}\n'
+            )
+            pairs = list(load_path(path))
+        report = check_set(pairs)
+        self.assertFalse(report.conforms)
+        self.assertEqual(len(pairs), 3, "a bad line must not truncate the run")
+
+    def test_a_non_utf8_json_file_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write(directory, "run.json", b'{"a":"\xff\xfe"}')
+            pairs = list(load_path(path))
+        self.assertEqual(len(pairs), 1)
+        self.assertFalse(check_set(pairs).conforms)
+
+    def test_a_directory_holding_a_bad_file_still_reports_the_good_ones(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.write(directory, "bad.json", b'\xff\xfe')
+            with open(os.path.join(directory, "good.json"), "w",
+                      encoding="utf-8") as handle:
+                json.dump(a_valid_envelope(), handle)
+            report = check_set(list(load_path(directory)))
+        self.assertEqual(report.counts["envelopes"], 2)
+        self.assertEqual(report.counts["conforming"], 1)
+
+
 class LoaderTests(unittest.TestCase):
     def test_json_lines_are_numbered_by_origin(self):
         stream = io.StringIO('{"a":1}\n\n{"b":2}\n')
@@ -165,6 +226,17 @@ class CommandLineTests(unittest.TestCase):
             [sys.executable, "-m", "relay_intake", "fixtures/valid"],
             cwd=REPO_ROOT, capture_output=True, text=True,
         )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_an_empty_directory_exits_non_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_cli(directory)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no envelopes found", result.stdout)
+
+    def test_an_empty_directory_exits_zero_when_declared_expected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.run_cli("--allow-empty", directory)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_main_returns_the_exit_status_in_process(self):

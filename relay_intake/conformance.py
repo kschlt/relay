@@ -57,12 +57,23 @@ class EnvelopeResult(object):
 class ConformanceReport(object):
     """The outcome for a whole set of envelopes."""
 
-    def __init__(self, results, cross_findings):
+    def __init__(self, results, cross_findings, allow_empty=False):
         self.results = results
         self.cross_findings = cross_findings
+        self.allow_empty = allow_empty
+
+    @property
+    def is_empty(self):
+        return not self.results
 
     @property
     def conforms(self):
+        # An empty set is not a pass. `all([])` is True, so without this a gate
+        # pointed at the wrong directory would go green having checked nothing
+        # — the one failure mode a conformance check must never have. An
+        # adapter run that legitimately found nothing passes --allow-empty.
+        if self.is_empty and not self.allow_empty:
+            return False
         return all(r.conforms for r in self.results) and not self.cross_findings
 
     @property
@@ -78,12 +89,22 @@ class ConformanceReport(object):
     def to_dict(self):
         return {
             "conforms": self.conforms,
+            "empty": self.is_empty,
             "counts": self.counts,
             "envelopes": [r.to_dict() for r in self.results],
             "cross_envelope_findings": [f.to_dict() for f in self.cross_findings],
         }
 
     def render(self):
+        if self.is_empty:
+            return (
+                "no envelopes found\n\n"
+                "0 envelope(s). %s"
+                % ("Accepted: --allow-empty was given." if self.allow_empty
+                   else "This is a failure: a check that examined nothing "
+                        "cannot report conformance. Pass --allow-empty if an "
+                        "empty run is expected.")
+            )
         lines = []
         for result in self.results:
             if result.conforms:
@@ -110,7 +131,7 @@ class ConformanceReport(object):
         return "\n".join(lines)
 
 
-def check_set(pairs):
+def check_set(pairs, allow_empty=False):
     """Run the whole suite over ``(origin, envelope)`` pairs.
 
     Returns a :class:`ConformanceReport`. Cross-envelope checks run only over
@@ -146,7 +167,7 @@ def check_set(pairs):
                     % (first_origin, result.origin),
                 )
             )
-    return ConformanceReport(results, sort_findings(cross))
+    return ConformanceReport(results, sort_findings(cross), allow_empty=allow_empty)
 
 
 def load_json_lines(stream, origin="<stdin>"):
@@ -155,11 +176,29 @@ def load_json_lines(stream, origin="<stdin>"):
     A line that is not JSON yields the string itself, so that ``validate``
     reports it as a non-object rather than the loader crashing on it.
     """
-    for number, line in enumerate(stream, start=1):
+    number = 0
+    while True:
+        number += 1
+        where = "%s:%d" % (origin, number)
+        # Decoding happens as the stream is iterated, so it has to be guarded
+        # here rather than around json.loads: a single non-UTF-8 byte would
+        # otherwise crash the harness instead of being reported.
+        try:
+            line = next(stream)
+        except StopIteration:
+            return
+        except UnicodeDecodeError as error:
+            yield where, "<undecodable input: %s>" % (error,)
+            return
+        if isinstance(line, bytes):
+            try:
+                line = line.decode("utf-8")
+            except UnicodeDecodeError as error:
+                yield where, "<undecodable input: %s>" % (error,)
+                continue
         line = line.strip()
         if not line:
             continue
-        where = "%s:%d" % (origin, number)
         try:
             yield where, json.loads(line)
         except ValueError as error:
@@ -176,16 +215,22 @@ def load_path(path):
                     for pair in load_path(os.path.join(root, filename)):
                         yield pair
         return
-    with open(path, "r", encoding="utf-8") as handle:
+    # Opened in binary so that a file which is not valid UTF-8 produces a
+    # finding rather than an exception out of the loader.
+    with open(path, "rb") as handle:
         if path.endswith(".jsonl"):
-            for pair in load_json_lines(handle, origin=path):
+            for pair in load_json_lines(iter(handle), origin=path):
                 yield pair
             return
-        try:
-            document = json.load(handle)
-        except ValueError as error:
-            yield path, "<unparseable JSON: %s>" % (error,)
-            return
+        raw = handle.read()
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except UnicodeDecodeError as error:
+        yield path, "<undecodable input: %s>" % (error,)
+        return
+    except ValueError as error:
+        yield path, "<unparseable JSON: %s>" % (error,)
+        return
     # A JSON file may hold one envelope or an array of them; both are common
     # ways for an adapter to dump a run, and neither is worth refusing.
     if isinstance(document, list):
@@ -207,6 +252,12 @@ def main(argv=None):
         help="JSON file, JSON Lines file, directory, or - for stdin (JSON Lines)",
     )
     parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        dest="allow_empty",
+        help="treat a set with no envelopes as conforming (default: failure)",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="as_json",
@@ -217,11 +268,12 @@ def main(argv=None):
     pairs = []
     for path in arguments.paths:
         if path == "-":
-            pairs.extend(load_json_lines(sys.stdin))
+            stream = getattr(sys.stdin, "buffer", sys.stdin)
+            pairs.extend(load_json_lines(iter(stream)))
         else:
             pairs.extend(load_path(path))
 
-    report = check_set(pairs)
+    report = check_set(pairs, allow_empty=arguments.allow_empty)
     if arguments.as_json:
         sys.stdout.write(
             json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"

@@ -42,10 +42,16 @@ quietly, and it is very hard to remove once something depends on it.
 - Vendor-specific attributes belong in an adapter's preserved payload, never in
   a canonical item.
 - Fixtures use invented identifiers and invented content, in obviously synthetic
-  forms. A test scans the corpus for real-looking material — live URLs, email
-  addresses, absolute paths, credential-shaped words, capture-vendor names — and
-  fails on any of them. Do not weaken that scan to land a fixture; change the
-  fixture.
+  forms. Two guards enforce this over the whole corpus, valid and invalid alike:
+  a text scan for real-looking material (live URLs, email addresses, absolute
+  paths, credential-shaped words), and structural checks that every source
+  system and adapter is `example`-prefixed and every payload reference points
+  somewhere obviously invented.
+
+  The guards are deliberately structural rather than a list of real product
+  names: an allowlist of invented prefixes cannot go stale, and this repository
+  has no reason to enumerate anyone's brand. Do not weaken a guard to land a
+  fixture; change the fixture.
 
 ## Accuracy rules
 

@@ -20,7 +20,7 @@ import re
 from relay_intake.canonical import (
     ALGORITHM_HEX_LENGTHS,
     INTAKE_ID_SEPARATOR,
-    canonical_bytes,
+    canonical_size,
     derive_intake_id,
 )
 from relay_intake.findings import (
@@ -225,6 +225,18 @@ def _check_string(report, value, path_segments, pattern=None, max_length=None,
     if _CONTROL_RE.search(value):
         report.add(E_FORMAT, at, "must not contain control characters")
         return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        # A lone surrogate survives JSON parsing but has no UTF-8 encoding, so
+        # an envelope containing one has no canonical form and cannot be
+        # compared, hashed, or replayed.
+        report.add(
+            E_FORMAT, at,
+            "must be encodable as UTF-8; an unpaired surrogate has no "
+            "canonical form",
+        )
+        return False
     if max_length is not None and len(value) > max_length:
         report.add(E_RANGE, at, "must be at most %d characters" % max_length)
         return False
@@ -280,17 +292,16 @@ def _validate_source(report, source):
         )
     if "external_id" in source:
         value = source["external_id"]
+        # U+001F, which separates the identity derivation components, needs no
+        # rule of its own here: it is a control character, and _check_string
+        # rejects every one of them. The guard that remains live is the one in
+        # _validate_intake_id, which keeps derive_intake_id from being called
+        # with a component it refuses.
         if _check_string(report, value, ("source", "external_id"), max_length=512):
             if not value:
                 report.add(
                     E_RANGE, pointer("source", "external_id"),
                     "must not be empty",
-                )
-            elif INTAKE_ID_SEPARATOR in value:
-                report.add(
-                    E_FORMAT, pointer("source", "external_id"),
-                    "must not contain U+001F, which separates the identity "
-                    "derivation components",
                 )
     if "external_revision" in source:
         _check_string(
@@ -453,8 +464,8 @@ def _validate_metadata(report, metadata):
             E_RANGE, pointer("metadata"),
             "must hold at most %d members" % MAX_METADATA_MEMBERS,
         )
-    size = len(canonical_bytes(metadata))
-    if size > MAX_METADATA_BYTES:
+    size = canonical_size(metadata)
+    if size is not None and size > MAX_METADATA_BYTES:
         report.add(
             E_METADATA_SIZE, pointer("metadata"),
             "canonical form is %d bytes, exceeding the %d-byte ceiling; "
@@ -511,9 +522,13 @@ def _validate_intake_id(report, envelope):
     external_id = source.get("external_id")
     if not isinstance(system, str) or not isinstance(external_id, str):
         return
-    if INTAKE_ID_SEPARATOR in system or INTAKE_ID_SEPARATOR in external_id:
+    try:
+        expected = derive_intake_id(system, external_id)
+    except (ValueError, UnicodeEncodeError):
+        # The components are not derivable — U+001F, or an unpaired surrogate
+        # with no UTF-8 encoding. Both are already reported against the members
+        # that carry them, and the derived identity is meaningless either way.
         return
-    expected = derive_intake_id(system, external_id)
     if intake_id != expected:
         report.add(
             E_INTAKE_ID_DERIVATION, pointer("intake_id"),
@@ -535,8 +550,12 @@ def validate(envelope):
         report.add(E_NOT_OBJECT, "", "an envelope must be a JSON object")
         return sort_findings(report.findings)
 
-    size = len(canonical_bytes(envelope))
-    if size > MAX_ENVELOPE_BYTES:
+    # None when the envelope holds a value with no canonical form (NaN, an
+    # unpaired surrogate). Those are violations in their own right and are
+    # reported by the member checks below; the size rule simply abstains rather
+    # than raising and abandoning the run.
+    size = canonical_size(envelope)
+    if size is not None and size > MAX_ENVELOPE_BYTES:
         report.add(
             E_ENVELOPE_SIZE, "",
             "canonical form is %d bytes, exceeding the %d-byte ceiling; an "

@@ -289,10 +289,19 @@ machine decides rather than something a human argues about:
 - No insignificant whitespace.
 - No floating-point numbers **anywhere in an envelope**. Every numeric member is
   an integer.
+- Every string must be encodable as UTF-8. An unpaired surrogate survives JSON
+  parsing and has no UTF-8 encoding, so a string containing one has no canonical
+  form and cannot be compared, hashed, or replayed.
 
-That last rule is why canonical form works across languages. Canonical JSON
+The float rule is why canonical form works across languages. Canonical JSON
 normally founders on float formatting; excluded by construction, the problem
 cannot arise, and two implementations in two languages produce identical bytes.
+
+Some values survive JSON parsing and still have no canonical form — `NaN` and
+`Infinity`, which many parsers accept by default, and unpaired surrogates. Each
+violates a rule above, and validation reports it as a finding. Validation never
+raises: abandoning a whole conformance run over one bad envelope is the opposite
+of what the run is for.
 
 ## Replay
 
@@ -325,6 +334,7 @@ Validation is deterministic in three specific senses, each enforced by a test:
 2. Findings are always in the same order — sorted by JSON Pointer, then by code.
 3. Validation reads nothing outside the envelope: no clock, no network, no
    filesystem, no locale, no environment.
+4. Validation returns findings and never raises, whatever it is handed.
 
 The third matters most. A validator that knew the date would reject tomorrow
 what it accepts today, which would make a fixture suite meaningless and a
@@ -377,6 +387,19 @@ Accepts a JSON file (one envelope or an array), a JSON Lines file, a directory,
 or `-` for a stream on stdin. Exit status is 0 when every envelope conforms and
 1 when any does not. Cross-envelope replay checks run over the whole set, so
 point it at a full run rather than one file at a time.
+
+Input that cannot be decoded or parsed is reported as a rejected envelope, not
+raised: one malformed line does not end the run, and the rest of the set is
+still checked.
+
+**An empty set does not conform.** A check that examined nothing cannot report
+conformance, and a gate pointed at the wrong path would otherwise pass having
+verified nothing at all. Where an empty run is legitimate — an incremental
+collection that found nothing new — say so explicitly:
+
+```
+python3 -m relay_intake.conformance --allow-empty path/to/envelopes/
+```
 
 To run the suite over this repository's own fixtures:
 

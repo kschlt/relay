@@ -37,6 +37,9 @@ adapters keep emitting valid envelopes; existing consumers keep working.
   previously refused, raising a ceiling.
 - **Adding a finding code** for a rule that was already stated in prose but not
   checked.
+- **Reporting a violation that previously crashed the validator.** An input that
+  raised was never conforming, so turning it into a finding cannot un-conform
+  anything.
 - **Correcting a finding's message.** Messages are for humans; codes are the
   contract.
 

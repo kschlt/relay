@@ -68,6 +68,22 @@ def canonical_bytes(value):
     ).encode("utf-8")
 
 
+def canonical_size(value):
+    """Canonical byte length of ``value``, or ``None`` if it has none.
+
+    Some JSON values have no canonical form at all: ``json.loads`` accepts
+    ``NaN`` and ``Infinity`` by default, and a lone surrogate survives parsing
+    but cannot be encoded as UTF-8. Both are already violations under other
+    rules, so validation reports them there — but a size check must not be the
+    thing that discovers them, because raising would abandon a whole conformance
+    run over one bad envelope.
+    """
+    try:
+        return len(canonical_bytes(value))
+    except (ValueError, UnicodeEncodeError):
+        return None
+
+
 def canonical_text(value):
     """``canonical_bytes`` decoded back to ``str``, for display and diffing."""
     return canonical_bytes(value).decode("utf-8")
@@ -88,7 +104,16 @@ def derive_intake_id(system, external_id):
         raise TypeError("system and external_id must both be str")
     if INTAKE_ID_SEPARATOR in system or INTAKE_ID_SEPARATOR in external_id:
         raise ValueError("U+001F is not permitted in a derivation component")
-    preimage = (system + INTAKE_ID_SEPARATOR + external_id).encode("utf-8")
+    try:
+        preimage = (system + INTAKE_ID_SEPARATOR + external_id).encode("utf-8")
+    except UnicodeEncodeError:
+        # An unpaired surrogate has no UTF-8 encoding, so it has no pre-image
+        # and therefore no identity. Re-raised as ValueError so that callers
+        # have one error type to guard rather than two.
+        raise ValueError(
+            "derivation components must be encodable as UTF-8; an unpaired "
+            "surrogate has no identity"
+        )
     digest = _HASHERS[INTAKE_ID_ALGORITHM](preimage).hexdigest()
     return "%s:%s" % (INTAKE_ID_ALGORITHM, digest)
 

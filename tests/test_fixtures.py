@@ -97,7 +97,11 @@ class SyntheticCorpusTests(unittest.TestCase):
         (re.compile(r"/(?:home|Users)/"), "an absolute path from someone's machine"),
         (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
          "an email address"),
-        (re.compile(r"https?://(?!payloads\.example\b)[^\s\"]*"), "a live URL"),
+        # The exemption must end at the host, not at a label boundary:
+        # `\b` after "example" would also exempt payloads.example.com,
+        # which is a registrable domain someone can own.
+        (re.compile(r"https?://(?!payloads\.example(?:[/?#]|$))[^\s\"]*"),
+         "a live URL"),
         (re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password|bearer)\b"),
          "a credential-shaped word"),
     )
@@ -121,32 +125,52 @@ class SyntheticCorpusTests(unittest.TestCase):
                        match.group(0) if match else None),
                 )
 
+    def all_envelopes(self):
+        """Every envelope in the corpus, valid and invalid alike.
+
+        An invalid fixture is published exactly like a valid one, so a guard
+        that inspected only the valid half would leave most of the corpus
+        unscanned.
+        """
+        manifest = load_manifest()
+        for entry in manifest["valid"] + manifest["invalid"]:
+            document = load_fixture(entry["file"])
+            if isinstance(document, dict):
+                yield entry["file"], document
+
     def test_every_source_system_and_adapter_is_visibly_invented(self):
         # Checked structurally rather than against a list of real product
         # names: an allowlist of invented prefixes cannot go stale, and this
         # repository has no reason to enumerate anyone's brand.
-        for entry in load_manifest()["valid"]:
-            envelope = load_fixture(entry["file"])
+        for name, envelope in self.all_envelopes():
             for label, value in (
-                ("source.system", envelope["source"]["system"]),
-                ("provenance.adapter", envelope["provenance"]["adapter"]),
+                ("source.system", envelope.get("source", {}).get("system")),
+                ("provenance.adapter",
+                 envelope.get("provenance", {}).get("adapter")),
             ):
+                if not isinstance(value, str):
+                    continue
                 self.assertTrue(
                     value.startswith("example"),
                     "%s: %s is %r, which does not read as synthetic"
-                    % (entry["file"], label, value),
+                    % (name, label, value),
                 )
 
-    def test_no_fixture_names_a_capture_vendor_in_a_payload_reference(self):
-        # A storage URI is the most likely place for a real product or host
-        # name to slip in, because it is the one member that names a system
-        # outside this repository.
-        for entry in load_manifest()["valid"]:
-            uri = load_fixture(entry["file"])["payload"]["uri"]
+    def test_every_payload_reference_points_somewhere_invented(self):
+        # A storage URI is the likeliest place for a real product or host name
+        # to slip in: it is the one member that names a system outside this
+        # repository. The data: exemption covers the fixture that exists to be
+        # rejected for inlining content.
+        for name, envelope in self.all_envelopes():
+            uri = envelope.get("payload", {}).get("uri")
+            if not isinstance(uri, str):
+                continue
             self.assertTrue(
-                uri.startswith("example") or ".example/" in uri,
+                uri.startswith("example")
+                or uri.lower().startswith("data:")
+                or ".example/" in uri,
                 "%s references %r, which is not an obviously invented "
-                "location" % (entry["file"], uri),
+                "location" % (name, uri),
             )
 
     def test_fixtures_are_formatted_for_reading(self):
