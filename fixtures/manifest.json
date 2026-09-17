@@ -48,7 +48,7 @@
       "codes": [
         "E_ENVELOPE_SIZE"
       ],
-      "note": "Every member individually legal, the whole past the envelope ceiling. The ceiling is what makes 'an envelope may enter model context' a checkable claim rather than a hope."
+      "note": "Every member individually legal, the whole past the envelope ceiling. The ceiling is what keeps an envelope cheap to log, queue and store however large the captured item is."
     },
     {
       "file": "invalid/fractional-number.json",

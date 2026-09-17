@@ -64,9 +64,9 @@ The destination's own committed state is authoritative for a completed delivery.
 Stable item identity and content identity are what make recovery possible when a
 receipt or a notification goes missing.
 
-Every destination is explicitly registered. Raw content reaches a model only when
-a semantic decision requires it. Moving an item must never require a model to
-repeat or rewrite its payload. Secrets stay outside version control.
+Every destination is explicitly registered. Raw content is read only where a
+semantic decision requires it; a payload is referenced, never carried. Secrets
+stay outside version control.
 
 ## What Relay does not own
 

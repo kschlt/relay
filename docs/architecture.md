@@ -31,9 +31,8 @@ other. Collapsing any two of them is how a pipeline becomes unchangeable.
 ## Adapters
 
 An adapter discovers source items, preserves their identity and raw content, and
-emits a canonical intake item. It must be able to persist a payload **without a
-model repeating it** — the write runs from connector response to storage through
-code.
+emits a canonical intake item. The payload is written **verbatim** — straight
+from the source response to storage, with nothing re-encoding it on the way.
 
 Everything vendor-shaped stops at the adapter: tool names, response shapes,
 pagination quirks, identifier formats. What crosses the boundary is canonical.
@@ -93,7 +92,7 @@ costs latency rather than data.
 - Raw payloads are persisted directly, by code.
 - Structural routing does not read content at all.
 - Semantic routing reads only where meaning decides the outcome.
-- Physical delivery never depends on model-generated copies of content.
+- Physical delivery resolves a registered identifier; it never acts on free text.
 - Domain-specific reading happens in the system that owns the domain.
 
 Every target is allow-listed by identifier before use. Source credentials stay

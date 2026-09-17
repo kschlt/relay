@@ -14,22 +14,16 @@ Treat it as sensitive by default and design accordingly.
 
 ## Design intent
 
-### Content is not moved by a model
-
-Payloads are preserved by the adapter, by code, and Relay carries a *reference*
-to a payload rather than the payload itself.
-
-The first reason is correctness — a model retyping a transcript can truncate or
-paraphrase it and still look like it succeeded, while a direct write either
-works or fails. The privacy effect is real too: content that is never placed in
-a prompt is not exposed through that prompt.
-
 ### Content is read only where meaning decides something
 
-Structural placement reads metadata and never content. Semantic placement reads
-content once, to choose among registered destinations, and does not carry it
-onward. Interpretation is not banned — it is **relocated** to whichever system
-owns the decision that needs it.
+Payloads are preserved by the adapter and Relay carries a *reference*, not the
+bytes. Structural placement reads metadata and never content. Semantic placement
+reads content once, to choose among registered destinations, and does not carry
+it onward.
+
+Interpretation is not banned — it is **relocated** to whichever system owns the
+decision that needs it. The privacy effect follows from the shape rather than
+from a promise: content that a step never receives is not exposed by that step.
 
 ### Destinations are closed
 

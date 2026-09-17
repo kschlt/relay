@@ -256,11 +256,10 @@ timestamps are fine, because a fast adapter legitimately produces them.
 
 ## The handoff
 
-This is how an adapter gets an item to Relay without any model reproducing the
-content.
+This is how an adapter gets an item to Relay.
 
 1. **Preserve first.** The adapter writes the payload to operator-designated
-   storage, directly, by code. No model is involved in moving those bytes.
+   storage, verbatim, before anything describes it.
 2. **Compute identity.** Digest the bytes as stored; derive `intake_id` from the
    source.
 3. **Emit an envelope.** One envelope per item, referencing the payload.
@@ -270,12 +269,13 @@ Then:
 - **The unit is one envelope per item.** A handoff is a set of envelopes.
 - **Transport is out of scope.** A file per envelope, a JSON Lines stream, an
   HTTP request — the operator's choice. Nothing in this contract depends on it.
-- **An envelope is bounded**: at most 4096 bytes in canonical form. That ceiling
-  is what turns "an envelope may safely enter model context" from an intention
-  into something a machine checks. There is nowhere in a closed, bounded
-  envelope to put a transcript.
-- **The payload is what may not.** Content reaches a model only where a semantic
-  decision requires it, and never merely to move it.
+- **An envelope is bounded**: at most 4096 bytes in canonical form. A captured
+  item can be megabytes, and an envelope that could grow with it would stop
+  being cheap to log, queue, store, and compare. The ceiling turns "an envelope
+  is metadata and a reference" from an intention into something a machine
+  checks: there is nowhere in a closed, bounded envelope to put a transcript.
+- **The payload is preserved verbatim**, and referenced rather than carried, so
+  nothing re-encodes it in transit.
 - **Re-emission is expected**, and must reproduce the item's facts exactly — see
   [Replay](#replay).
 

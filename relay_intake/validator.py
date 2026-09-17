@@ -52,8 +52,9 @@ ENVELOPE_VERSION = "1"
 
 #: Ceiling on the canonical form of a whole envelope. An envelope is metadata
 #: and a reference; it is never content. A hard ceiling is what turns that
-#: sentence from an intention into something a machine can enforce, and it is
-#: what makes it safe to say an envelope may enter model context.
+#: sentence from an intention into something a machine enforces — a captured
+#: item can be megabytes, and an envelope free to grow with it would stop being
+#: cheap to log, queue, store, and compare.
 MAX_ENVELOPE_BYTES = 4096
 
 #: Ceiling on the canonical form of ``metadata`` alone, so that the free-form

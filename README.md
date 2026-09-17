@@ -2,10 +2,9 @@
 
 Relay is a source-independent routing layer for captured information.
 
-It accepts canonical intake items from capture adapters, selects only among
-destinations an operator has explicitly registered, and hands the selected item
-to deterministic delivery — without asking a language model to reproduce the
-captured content in order to move it.
+It accepts canonical intake items from capture adapters, decides which
+registered destination each one belongs to, and hands it to deterministic
+delivery.
 
 > ## Status: pre-alpha — one contract defined
 >
@@ -24,18 +23,16 @@ captured content in order to move it.
 
 ## The problem
 
-Capture is easy and placement is hard. Notes and meeting transcripts pile up in
-whatever tool recorded them, and getting each one to the project it belongs to
-usually collapses into one of two shapes:
+Capture is easy and placement is hard. A thought dictated on a walk, a
+transcript from this morning's call — each belongs somewhere specific, and
+getting it there is a small chore that never quite happens. So captures
+accumulate in whatever tool recorded them, in a pile nobody revisits.
 
-- **A point-to-point integration** that braids vendor retrieval, placement
-  rules, and downstream processing into a single script. Changing the capture
-  tool means rewriting the pipeline, so in practice it never changes. Adding a
-  second capture tool means writing the whole thing again.
-- **A model used as transport**, where an agent reads content and writes it back
-  out so that it lands somewhere durable. This is expensive on long content,
-  silently lossy — truncation and paraphrase both look like success — and it
-  puts the full text into model context to accomplish a copy.
+Automating the chore usually collapses into a point-to-point integration: one
+script that knows a vendor's API, the rules for where things go, and what
+happens after they land, all braided together. Changing capture tools means
+rewriting it, so in practice it never changes. Adding a second capture tool
+means writing the whole thing again.
 
 ## The intent
 
@@ -44,7 +41,8 @@ Relay is the reusable middle. It is deliberately small:
 - It accepts a **canonical intake item** from any adapter, in a shape that says
   nothing about which vendor produced it.
 - It selects a destination **from a closed registry**, never from free text.
-- It performs delivery through **deterministic code**, not model output.
+- It performs every write through **deterministic code**. A model may choose
+  among registered destinations; it never constructs a path.
 - It treats **repository state as the source of truth**, so an interrupted run
   can be resumed and a repeated run does not duplicate.
 - It leaves anything it cannot place safely in a **visible unresolved state**
@@ -83,7 +81,8 @@ not part of this repository and never will be.
   authoritative.
 - Model judgement may *select* among registered options; deterministic code
   performs every write.
-- Raw content is never reproduced by a model merely to move it.
+- Payloads travel by reference. An envelope stays small enough to log, queue,
+  and diff.
 - Delivery is idempotent and recoverable — interrupted runs resume, repeated
   runs do not duplicate.
 - Structural decisions do not read content. Content is read only where meaning
@@ -142,8 +141,8 @@ Four properties do the work:
   `content.digest` is a replay, already handled. Same identity, different digest
   is a revision. That is what makes "just run it again" safe after a partial run.
 - **The envelope is closed and bounded** — at most 4096 bytes, with nowhere to
-  put a transcript. That is what makes "an envelope may enter model context"
-  checkable rather than hopeful.
+  put a transcript. A captured item can be megabytes; an envelope that could
+  grow with it would stop being cheap to log, queue, and store.
 - **It names no destination.** Where an item goes is not an adapter's to say.
 
 ### Checking an adapter against it
@@ -164,9 +163,9 @@ than one file at a time — replay consistency is checked across a set.
 ## On privacy
 
 This project is built to move meeting transcripts and personal notes. The design
-intent — keep content out of model context, keep credentials out of the
-repository, write only to destinations an operator registered — and the limits
-of what that can honestly promise are in
+intent — read content only where meaning decides something, keep credentials out
+of the repository, write only to destinations an operator registered — and the
+limits of what that can honestly promise are in
 [docs/privacy-and-security.md](docs/privacy-and-security.md). Read it before
 pointing anything at real data.
 
