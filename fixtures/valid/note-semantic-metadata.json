@@ -1,0 +1,38 @@
+{
+  "envelope_version": "1",
+  "intake_id": "sha-256:d3bdb761fac35e2564c73caedc7a6a46740c284b9c4a7c49354957df1a83d5ef",
+  "kind": "note",
+  "occurred_at": "2026-01-05T14:00:00Z",
+  "captured_at": "2026-01-05T15:02:11Z",
+  "source": {
+    "system": "example-desktop-capture",
+    "external_id": "note-0002-synthetic"
+  },
+  "provenance": {
+    "adapter": "example-desktop-adapter",
+    "adapter_version": "2.0.0",
+    "acquired_at": "2026-01-05T15:30:00Z",
+    "emitted_at": "2026-01-05T15:30:02Z"
+  },
+  "content": {
+    "media_type": "text/markdown; charset=utf-8",
+    "byte_length": 32,
+    "digest": {
+      "algorithm": "sha-256",
+      "value": "5341b9b7211ea8a7e2efa2b68f437a6c7b6766dcc4e99a5e18d29836aad20b76"
+    }
+  },
+  "payload": {
+    "uri": "https://payloads.example/store/note-0002-synthetic.md",
+    "preserved_at": "2026-01-05T15:30:01Z"
+  },
+  "metadata": {
+    "title": "Synthetic idea capture",
+    "language": "de",
+    "word_count": 118,
+    "tags": [
+      "synthetic",
+      "fixture"
+    ]
+  }
+}

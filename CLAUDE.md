@@ -10,9 +10,11 @@ world-readable forever, including through history and forks. There is no private
 mode and no taking it back.
 
 **This project is pre-alpha.** Contracts are defined one at a time, smallest
-first. Do not write implementation for a layer whose contract has not been
-defined — routing, delivery, receipts, and scheduling are all undefined today.
-Code written ahead of a contract encodes guesses about it.
+first. Exactly one is defined: the canonical intake envelope
+([docs/intake-envelope.md](docs/intake-envelope.md)). Routing, destination
+registration, delivery, receipts, and scheduling are all undefined today — do
+not write implementation for any of them. Code written ahead of a contract
+encodes guesses about it.
 
 ## Hard rules for anything you commit here
 
@@ -40,7 +42,10 @@ quietly, and it is very hard to remove once something depends on it.
 - Vendor-specific attributes belong in an adapter's preserved payload, never in
   a canonical item.
 - Fixtures use invented identifiers and invented content, in obviously synthetic
-  forms.
+  forms. A test scans the corpus for real-looking material — live URLs, email
+  addresses, absolute paths, credential-shaped words, capture-vendor names — and
+  fails on any of them. Do not weaken that scan to land a fixture; change the
+  fixture.
 
 ## Accuracy rules
 
@@ -80,7 +85,41 @@ SECURITY.md                      vulnerability reporting
 LICENSE                          Apache-2.0
 docs/architecture.md             layers, routing modes, lifecycle, recovery
 docs/privacy-and-security.md     data handling and its honest limits
+docs/intake-envelope.md          the intake contract — normative
+docs/compatibility.md            how the contract may and may not change
+schema/                          machine-readable structural schema
+relay_intake/                    reference validator and conformance harness
+fixtures/                        synthetic corpus, declared in manifest.json
+tests/                           the contract suite (stdlib unittest only)
+Makefile                         `make check` runs the suite
 ```
+
+## Working on the intake contract
+
+The envelope is the one thing every adapter and consumer depends on, so changes
+to it are governed rather than ordinary.
+
+- **Read [docs/compatibility.md](docs/compatibility.md) before changing
+  anything under `schema/`, `relay_intake/`, or `fixtures/`.** It states which
+  changes are breaking. The mechanical test: every envelope that conformed
+  before must still conform after.
+- **The three artifacts must stay in agreement.** The specification is
+  normative, the JSON Schema is the structural subset, and the reference
+  validator is authoritative. The schema must never reject something the
+  validator accepts — a test enforces this, do not weaken it.
+- **A new rule needs a fixture.** `fixtures/manifest.json` declares the exact
+  finding codes each invalid fixture must produce, and a test asserts the
+  corpus covers every code. A rule with no fixture is a rule nobody will
+  notice breaking.
+- **Never add a clock, a network call, or a filesystem read to validation.** A
+  validator that consults ambient state would reject tomorrow what it accepts
+  today, which makes the fixture corpus meaningless and a replayed envelope
+  unverifiable. A test checks for this.
+- **The suite runs on a bare Python 3 with nothing installed.** Do not add a
+  runtime or test dependency. An adapter author in another language must be
+  able to clone this repository and run the contract immediately.
+- **No destination, routing hint, priority, or delivery status** goes into an
+  envelope. Those are decisions, and they belong to whoever makes them.
 
 ## Workflow tooling
 

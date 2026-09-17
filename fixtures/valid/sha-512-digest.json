@@ -1,0 +1,28 @@
+{
+  "envelope_version": "1",
+  "intake_id": "sha-256:3ed3d476738d15fd40a913df4e54b3935a1457e8cda7f26f27eb85283fe0b176",
+  "kind": "note",
+  "captured_at": "2026-01-05T15:02:11Z",
+  "source": {
+    "system": "example-capture",
+    "external_id": "note-0003-synthetic"
+  },
+  "provenance": {
+    "adapter": "example-adapter",
+    "adapter_version": "0.3.1",
+    "acquired_at": "2026-01-05T15:30:00Z",
+    "emitted_at": "2026-01-05T15:30:02Z"
+  },
+  "content": {
+    "media_type": "text/plain; charset=utf-8",
+    "byte_length": 49,
+    "digest": {
+      "algorithm": "sha-512",
+      "value": "effd1f72c6e589453b19a7a82c8a003ec1309750b90c3300cf7b8c381c377b3dcd1f19f45a57a8bb9a1377d53a8b07535d5485145708cff3a5d724699295a83d"
+    }
+  },
+  "payload": {
+    "uri": "example-store:note/note-0003-synthetic.txt",
+    "preserved_at": "2026-01-05T15:30:01Z"
+  }
+}

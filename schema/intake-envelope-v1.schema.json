@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kschlt/relay/schema/intake-envelope-v1.schema.json",
+  "title": "Relay canonical intake envelope, version 1",
+  "description": "The structural half of the intake contract. Rules that relate two members to each other — timestamp ordering, identity derivation, digest length against its named algorithm, size ceilings — cannot be expressed in JSON Schema and are stated normatively in docs/intake-envelope.md. A document accepted here is well-shaped, not necessarily conforming; run the reference validator for the full contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "envelope_version",
+    "intake_id",
+    "kind",
+    "captured_at",
+    "source",
+    "provenance",
+    "content",
+    "payload"
+  ],
+  "properties": {
+    "envelope_version": {
+      "description": "Major version of the contract. Only the major appears on the wire; a consumer must never branch on a minor version, because a change it would need to branch on is by definition breaking.",
+      "const": "1"
+    },
+    "intake_id": {
+      "description": "Identity of the captured item, derived from source.system and source.external_id. Stable across revisions of the same item.",
+      "type": "string",
+      "pattern": "^sha-256:[0-9a-f]{64}$"
+    },
+    "kind": {
+      "description": "What was captured. A consumer routes on this, so the vocabulary is closed; x- names an experimental kind that must not be routed structurally.",
+      "anyOf": [
+        { "enum": ["meeting", "note"] },
+        { "type": "string", "pattern": "^x-[a-z0-9]+(?:-[a-z0-9]+)*$" }
+      ]
+    },
+    "occurred_at": {
+      "description": "When the captured thing happened. Absent when the source cannot say.",
+      "$ref": "#/$defs/timestamp"
+    },
+    "captured_at": {
+      "description": "When the source system recorded the item.",
+      "$ref": "#/$defs/timestamp"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "external_id"],
+      "properties": {
+        "system": {
+          "description": "Vendor-neutral identifier for the capture system. Part of the identity derivation, so it must be stable for the lifetime of the deployment.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 64
+        },
+        "external_id": {
+          "description": "The item's identifier within that system. Opaque to Relay.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "external_revision": {
+          "description": "Optional source-side revision marker. Advisory: content.digest is what actually distinguishes revisions.",
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+        }
+      }
+    },
+    "provenance": {
+      "description": "How this envelope came to exist. Excluded from the item projection, so re-emission may change it freely.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "adapter_version", "acquired_at", "emitted_at"],
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 64
+        },
+        "adapter_version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.\\-]+)?(?:\\+[0-9A-Za-z.\\-]+)?$",
+          "maxLength": 64
+        },
+        "acquired_at": {
+          "description": "When the adapter read the item from the source.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "emitted_at": {
+          "description": "When the adapter produced this envelope.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "run_id": {
+          "description": "Optional collection-run identifier, for operational correlation only.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._~\\-]{0,127}$"
+        }
+      }
+    },
+    "content": {
+      "description": "Identity of the preserved bytes. Distinguishes one revision of an item from another.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["media_type", "byte_length", "digest"],
+      "properties": {
+        "media_type": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[a-z0-9][a-z0-9!#$&^_.+\\-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+\\-]{0,126}(?:[ \\t]*;[ \\t]*[a-z0-9!#$&^_.+\\-]+=(?:\"[^\"]*\"|[^;\\s]+))*$"
+        },
+        "byte_length": {
+          "description": "Length of the preserved payload in bytes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "digest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": { "enum": ["sha-256", "sha-512"] },
+            "value": {
+              "type": "string",
+              "pattern": "^[0-9a-f]+$",
+              "maxLength": 256
+            }
+          }
+        }
+      }
+    },
+    "payload": {
+      "description": "Where the preserved bytes are, and when they were preserved. A reference, never the bytes themselves.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri", "preserved_at"],
+      "properties": {
+        "uri": {
+          "description": "Absolute URI resolvable by the operator's storage. Schemes that inline data are forbidden by the normative rules; JSON Schema states the shape only.",
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^[A-Za-z][A-Za-z0-9+.\\-]*:[^\\s]+$",
+          "not": { "pattern": "^[Dd][Aa][Tt][Aa]:" }
+        },
+        "preserved_at": {
+          "description": "When the adapter durably wrote the payload. Precedes provenance.emitted_at: an envelope must not reference bytes that did not yet exist.",
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "metadata": {
+      "description": "Source-neutral facts about the item, sufficient for structural routing and insufficient to reconstruct the content. Vendor-specific attributes belong in the preserved payload, not here.",
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+      "properties": {
+        "title": { "$ref": "#/$defs/metadataString" },
+        "language": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "maxLength": 35
+        },
+        "duration_seconds": { "type": "integer", "minimum": 0 },
+        "participant_count": { "type": "integer", "minimum": 0 },
+        "word_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": {
+        "anyOf": [
+          { "$ref": "#/$defs/metadataString" },
+          { "type": "integer" },
+          { "type": "boolean" },
+          {
+            "type": "array",
+            "maxItems": 32,
+            "items": { "$ref": "#/$defs/metadataString" }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "timestamp": {
+      "description": "RFC 3339 instant with a literal Z offset. Only Z is admitted: an offset-bearing timestamp denotes the same instant and renders differently, which would make canonical form ambiguous.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$"
+    },
+    "metadataString": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+    }
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "envelope_version": "1",
+  "purpose": "Every fixture is synthetic. No real capture, identifier, title, participant, path, or destination appears in this corpus, and none ever may.",
+  "valid": [
+    {
+      "file": "valid/experimental-kind.json",
+      "note": "An experimental kind. Namespaced so it can never collide with a future core kind, and not structurally routable."
+    },
+    {
+      "file": "valid/meeting-minimal.json",
+      "note": "Every required member and nothing else: occurred_at and metadata are both optional, and a meeting without them is still routable by kind."
+    },
+    {
+      "file": "valid/meeting-structural.json",
+      "note": "A meeting carrying exactly the trusted metadata structural routing needs. Nothing here requires reading the transcript."
+    },
+    {
+      "file": "valid/note-minimal-replayed.json",
+      "note": "The same item re-emitted by a later run of a newer adapter. Provenance and payload.preserved_at differ; every item fact is identical, which is what makes this a replay rather than a second item."
+    },
+    {
+      "file": "valid/note-minimal.json",
+      "note": "A general capture. Its destination depends on what it means, so a consumer may read the payload once — the envelope itself does not carry it."
+    },
+    {
+      "file": "valid/note-revised.json",
+      "note": "The same source item after an edit: identical intake_id, different content digest. A revision is legal and is distinguishable from a replay."
+    },
+    {
+      "file": "valid/note-semantic-metadata.json",
+      "note": "A second adapter, a different storage scheme, and an undeclared metadata name. A consumer ignores names it does not know, which is what makes adding one a non-breaking change."
+    },
+    {
+      "file": "valid/sha-512-digest.json",
+      "note": "Content identity under the second admitted digest algorithm. The intake identity algorithm is fixed regardless."
+    }
+  ],
+  "invalid": [
+    {
+      "file": "invalid/digest-length-mismatch.json",
+      "codes": [
+        "E_DIGEST_LENGTH"
+      ],
+      "note": "A truncated sha-256 digest. Length is checked against the named algorithm, not merely against the hex alphabet."
+    },
+    {
+      "file": "invalid/envelope-too-large.json",
+      "codes": [
+        "E_ENVELOPE_SIZE"
+      ],
+      "note": "Every member individually legal, the whole past the envelope ceiling. The ceiling is what makes 'an envelope may enter model context' a checkable claim rather than a hope."
+    },
+    {
+      "file": "invalid/fractional-number.json",
+      "codes": [
+        "E_NUMBER_NOT_INTEGER"
+      ],
+      "note": "A fractional number. Excluded so canonical form is reproducible across languages without a float-formatting rule."
+    },
+    {
+      "file": "invalid/intake-id-not-derived.json",
+      "codes": [
+        "E_INTAKE_ID_DERIVATION"
+      ],
+      "note": "A well-formed identity that is not the one the source implies. An adapter that invents identities breaks deduplication silently."
+    },
+    {
+      "file": "invalid/metadata-nested-object.json",
+      "codes": [
+        "E_METADATA_VALUE"
+      ],
+      "note": "A nested object in metadata. Structure there is how a payload gets smuggled in a piece at a time."
+    },
+    {
+      "file": "invalid/metadata-too-large.json",
+      "codes": [
+        "E_METADATA_SIZE"
+      ],
+      "note": "Metadata inflated past its ceiling by many small legal members — the realistic way content leaks into an envelope."
+    },
+    {
+      "file": "invalid/metadata-vendor-key.json",
+      "codes": [
+        "E_METADATA_KEY"
+      ],
+      "note": "A camelCase, vendor-shaped metadata name. Vendor attributes belong in the preserved payload."
+    },
+    {
+      "file": "invalid/missing-required-members.json",
+      "codes": [
+        "E_FIELD_MISSING"
+      ],
+      "note": "content and captured_at absent. Identity and revision both become unanswerable without them."
+    },
+    {
+      "file": "invalid/multiple-violations.json",
+      "codes": [
+        "E_ENUM",
+        "E_FIELD_MISSING",
+        "E_RANGE"
+      ],
+      "note": "Three unrelated violations at once: validation reports all of them, not the first, so an adapter author fixes one round instead of three."
+    },
+    {
+      "file": "invalid/negative-byte-length.json",
+      "codes": [
+        "E_RANGE"
+      ],
+      "note": "A negative length."
+    },
+    {
+      "file": "invalid/not-an-object.json",
+      "codes": [
+        "E_NOT_OBJECT"
+      ],
+      "note": "A JSON array at the top level."
+    },
+    {
+      "file": "invalid/occurred-after-captured.json",
+      "codes": [
+        "E_TIMESTAMP_ORDER"
+      ],
+      "note": "The capture predates the thing it captured."
+    },
+    {
+      "file": "invalid/payload-preserved-after-emit.json",
+      "codes": [
+        "E_TIMESTAMP_ORDER"
+      ],
+      "note": "The envelope claims to have been emitted before the payload it references existed."
+    },
+    {
+      "file": "invalid/payload-uri-embeds-content.json",
+      "codes": [
+        "E_PAYLOAD_URI_EMBEDS_CONTENT"
+      ],
+      "note": "A data: URI. The reference exists so the bytes travel separately; inlining them defeats the entire boundary."
+    },
+    {
+      "file": "invalid/timestamp-with-offset.json",
+      "codes": [
+        "E_FORMAT"
+      ],
+      "note": "A correct instant rendered with an offset. It compares correctly and canonicalises differently, which is why only Z is admitted."
+    },
+    {
+      "file": "invalid/unknown-kind.json",
+      "codes": [
+        "E_ENUM"
+      ],
+      "note": "A kind outside the closed vocabulary and outside the x- namespace."
+    },
+    {
+      "file": "invalid/unknown-members.json",
+      "codes": [
+        "E_FIELD_UNKNOWN"
+      ],
+      "note": "A destination hint and a vendor-shaped source member. The envelope is closed, so both fail loudly instead of riding along ignored."
+    },
+    {
+      "file": "invalid/unsupported-version.json",
+      "codes": [
+        "E_VERSION_UNSUPPORTED"
+      ],
+      "note": "A major version this implementation does not validate."
+    },
+    {
+      "file": "invalid/wrong-type.json",
+      "codes": [
+        "E_TYPE"
+      ],
+      "note": "byte_length given as a string."
+    }
+  ]
+}
