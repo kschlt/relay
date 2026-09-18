@@ -13,10 +13,9 @@ duplicates placement logic in every one of them.
 Relay is one dependable entrance for captured information.
 
 A capture made on a phone should arrive, committed, in the right registered
-destination before the next working session — without anyone re-typing it and
-without a model having been asked to copy it. A meeting arriving through the same
-run should be handed to whatever system owns meetings, structurally, without
-Relay reading the transcript.
+destination before the next working session, without anyone filing it by hand.
+A meeting arriving through the same run should be handed to whatever system owns
+meetings, structurally, without Relay reading the transcript.
 
 Adding a second capture source later should mean writing a second adapter. It
 should not mean touching Relay, and it should not mean touching a single
@@ -32,8 +31,8 @@ destination.
   performs the write.
 - **Idempotence and recovery.** Repeated runs do not duplicate. Interrupted runs
   resume. A lost notification cannot erase a successful delivery.
-- **Context economy.** Structural decisions read metadata. Semantic decisions
-  read content once. Nothing reads content merely to move it.
+- **Minimal reading.** Structural decisions read metadata only. Semantic
+  decisions read content once, where meaning decides the outcome.
 - **Visible failure.** Ambiguity, missing configuration, and validation failure
   all produce a reviewable unresolved item, never an invented destination.
 
@@ -61,8 +60,7 @@ The target is reached when all of these hold:
 4. A general capture is delivered only to an explicitly registered destination.
 5. Repeated runs create no duplicates, and interrupted runs resume.
 6. Unresolved items stay reviewable rather than disappearing.
-7. No payload has to be reproduced in model output for delivery to happen.
-8. Every repository in the picture can state its role and its non-goals
+7. Every repository in the picture can state its role and its non-goals
    unambiguously.
 
 ## Current phase

@@ -1,0 +1,28 @@
+{
+  "envelope_version": "1",
+  "intake_id": "sha-256:bf6b87a85453e3e7da0c04a960477af26486f088659222694aafccdb82c8a37d",
+  "kind": "x-voice-memo",
+  "captured_at": "2026-01-05T15:02:11Z",
+  "source": {
+    "system": "example-capture",
+    "external_id": "memo-0001-synthetic"
+  },
+  "provenance": {
+    "adapter": "example-adapter",
+    "adapter_version": "0.3.1",
+    "acquired_at": "2026-01-05T15:30:00Z",
+    "emitted_at": "2026-01-05T15:30:02Z"
+  },
+  "content": {
+    "media_type": "audio/ogg",
+    "byte_length": 21,
+    "digest": {
+      "algorithm": "sha-256",
+      "value": "e5e3b2d02155cfb9898303f6f677860496efc4ffce3080f67a17148c55cc8c03"
+    }
+  },
+  "payload": {
+    "uri": "example-store:memo/memo-0001-synthetic.ogg",
+    "preserved_at": "2026-01-05T15:30:01Z"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "envelope_version": "1",
+  "intake_id": "sha-256:04727b1774adc952a99ef1cd4cfd556cbb58d4c7c64d944276f8fc602f80a634",
+  "kind": "meeting",
+  "captured_at": "2026-01-05T15:02:11Z",
+  "source": {
+    "system": "example-capture",
+    "external_id": "mtg-0002-synthetic"
+  },
+  "provenance": {
+    "adapter": "example-adapter",
+    "adapter_version": "0.3.1",
+    "acquired_at": "2026-01-05T15:30:00Z",
+    "emitted_at": "2026-01-05T15:30:02Z"
+  },
+  "content": {
+    "media_type": "text/vtt",
+    "byte_length": 59,
+    "digest": {
+      "algorithm": "sha-256",
+      "value": "cdb71e4d867de08f04704d39215113a12aaa811b140e4a2af9bca6112e669a61"
+    }
+  },
+  "payload": {
+    "uri": "example-store:meeting/mtg-0002-synthetic.vtt",
+    "preserved_at": "2026-01-05T15:30:01Z"
+  }
+}

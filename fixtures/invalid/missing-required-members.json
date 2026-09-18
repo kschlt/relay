@@ -1,0 +1,26 @@
+{
+  "envelope_version": "1",
+  "intake_id": "sha-256:916f43044196ff165ede8e501b2731d552e9115b9de70549e9c415f449f8478c",
+  "kind": "meeting",
+  "occurred_at": "2026-01-05T14:00:00Z",
+  "source": {
+    "system": "example-capture",
+    "external_id": "mtg-0001-synthetic"
+  },
+  "provenance": {
+    "adapter": "example-adapter",
+    "adapter_version": "0.3.1",
+    "acquired_at": "2026-01-05T15:30:00Z",
+    "emitted_at": "2026-01-05T15:30:02Z"
+  },
+  "payload": {
+    "uri": "example-store:meeting/mtg-0001-synthetic.vtt",
+    "preserved_at": "2026-01-05T15:30:01Z"
+  },
+  "metadata": {
+    "title": "Synthetic planning discussion",
+    "language": "en-GB",
+    "duration_seconds": 2700,
+    "participant_count": 4
+  }
+}
